@@ -1,0 +1,8 @@
+*.fasl
+*~
+\#*
+*.png
+*.txt
+*.csv
+prededessor.lisp
+.\#*
