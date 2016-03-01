@@ -35,15 +35,31 @@
 	(y1 (+ y0 diameter)))
     (list x0 y0 x1 y1)))
 
+(defun centered-coords (coords)
+  (cons (/ (+ (first coords) (third coords)) 2)
+	(cons (/ (+ (second coords) (fourth coords)) 2) niol)))
+
 (defun milliseconds-to-nanoseconds (n)
   (* n 1000000))
+
+(defun ticker-generator ()
+  (let ((milliseconds-per-tick 33)
+	(time-of-last-tick (local-time:now)))
+    (lambda ()
+      (let ((now (local-time:now)))
+	(if (local-time:timestamp<
+	     (local-time:timestamp+ time-of-last-tick
+				    (milliseconds-to-nanoseconds 
+				     milliseconds-per-tick) :nsec) now)
+	    (setf time-of-last-tick now)
+	    nil)))))
 
 (defclass planet ()
    ((image-item :accessor image-item)
     (degree :accessor degree :initform 0)
     (degree-increment :accessor degree-increment :initarg :degree-increment :initform 2)
     (diameter :accessor diameter :initarg :diameter :initform 10)
-    (multiplier :accessor multiplier :initarg :multiplier :initform 5)
+    (multiplier :accessor multiplier :initarg :multiplier :initform 7)
     (interval :accessor interval :initarg :interval :initform 10)
     (coords :accessor coords)))
 
@@ -70,14 +86,8 @@
 
 (defgeneric draw-chord (chord planet planet canvas))
 (defmethod draw-chord ((a-chord chord) (first-planet planet) (second-planet planet) canvas)
-  (setf (image-item a-chord) (make-line canvas (list (/ (+ (first (coords first-planet))
-							     (third (coords first-planet))) 2)
-						     (/ (+ (second (coords first-planet))
-							     (fourth (coords first-planet))) 2)
-						     (/ (+ (first (coords second-planet))
-							     (third (coords second-planet))) 2)
-						     (/ (+ (second (coords second-planet))
-							     (fourth (coords second-planet))) 2)))))
+  (setf (image-item a-chord) (make-line canvas (append (centered-coords (coords first-planet))
+						       (centered-coords (coords second-planet))))))
 
 (defun main ()
   (with-ltk ()
@@ -93,27 +103,42 @@
       (configure (image-item outer-planet) :fill :blue)
       (draw-planet inner-planet c)
       (configure (image-item inner-planet) :fill :red)
-      (loop while continuep do
-	   (labels ((ticker-generator ()
-		      (let ((milliseconds-per-tick 33)
-			    (time-of-last-tick (local-time:now)))
-			(lambda ()
-			  (let ((now (local-time:now)))
-			    (if (local-time:timestamp<
-				 (local-time:timestamp+ time-of-last-tick
-							(milliseconds-to-nanoseconds 
-							 milliseconds-per-tick) :nsec) now)
-				(setf time-of-last-tick now)
-				nil))))))
-	     (let ((my-ticker (ticker-generator)))
-	       (do ((i 0 (1+ i)))
-		   ((< i 0))
-		 (when (funcall my-ticker)
-		     (orbit outer-planet c)
-		     (orbit inner-planet c)
-		   (when (and (> (degree inner-planet) 0) (= 0 (mod (degree inner-planet) 10)))
-		     (draw-chord a-chord outer-planet inner-planet c))
-		   (process-events)
-))))))))
 
+      (let ((my-ticker (ticker-generator))
+	    (chord-queue (make-queue)))
+	(loop while continuep do
+	     (do ((i 0 (1+ i)))
+		 ((< i 0))
+	       (when (funcall my-ticker)
+		 (orbit outer-planet c)
+		 (orbit inner-planet c)
+		 (when (and (> (degree inner-planet) 0) (= 0 (mod (degree inner-planet) 10)))
+		   (draw-chord a-chord outer-planet inner-planet c)
+		   (process-events)
+		   (enqueue (image-item a-chord) chord-queue)
+		   (when (> (length (queue-contents chord-queue)) 20)
+		     (itemdelete c (dequeue chord-queue))))
+		 (process-events))))))))
+
+
+(defun queue-contents (q) (cdr q))
+
+(defun make-queue ()
+  (let ((q (cons nil nil)))
+    (setf (car q) q)))
+
+(defun enqueue (item q)
+  (setf (car q)
+	(setf (rest (car q))
+	      (cons item nil)))
+  q)
+
+(defun dequeue (q)
+  (let ((item-dq (pop (cdr q))))
+  (if (null (cdr q)) (setf (car q) q))
+  item-dq))
+
+(defun front (q) (first (queue-contents q)))
+
+(defun empty-queue-p (q) (null (queue-contents q)))
 
