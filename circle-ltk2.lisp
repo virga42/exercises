@@ -12,6 +12,14 @@
 (defparameter x-origin 300)
 (defparameter y-origin 300)
 
+(defun state-toggle ()
+  (let ((state :off))
+    (lambda ()
+      (if (equalp state :on)
+          (setf state :off)
+          (setf state :on))
+      state)))
+
 (defun rad (degrees)
   (* pi (/ degrees 180.0)))
 
@@ -37,7 +45,7 @@
 
 (defun centered-coords (coords)
   (cons (/ (+ (first coords) (third coords)) 2)
-	(cons (/ (+ (second coords) (fourth coords)) 2) niol)))
+	(cons (/ (+ (second coords) (fourth coords)) 2) nil)))
 
 (defun milliseconds-to-nanoseconds (n)
   (* n 1000000))
@@ -89,36 +97,82 @@
   (setf (image-item a-chord) (make-line canvas (append (centered-coords (coords first-planet))
 						       (centered-coords (coords second-planet))))))
 
+(defwidget control-panel (frame)
+  ((value :accessor value :initform 20)
+   (state :accessor state :initform :on)
+   (cmd-slider :accessor cmd-slider :initform (lambda () ))
+   (cmd-action-btn :accessor cmd-action-btn :initform (lambda () )))
+  ()
+  (let ((chord-queue-title (make-instance 'label 
+					  :text "Number of chords"
+					  :master self))
+	(chord-queue-slider (make-instance 'scale 
+			       :orientation :horizontal
+			       :from 10
+			       :to 400
+			       :master self))
+	(chord-queue-slider-label (make-instance 'label :master self))
+	(action-btn (make-instance 'button :master self
+				   :text "Pause")))
+    (setf (command chord-queue-slider) (lambda (e) (progn
+						     (setf (text chord-queue-slider-label) 
+							   (format nil "~a" (floor e)))
+						     (setf (value self) e)
+						     (funcall (cmd-slider self) e))))
+    (setf (command action-btn) (lambda () (progn
+					     (setf (text action-btn) "Go!")
+					     (setf (state self) (funcall (cmd-action-btn self))))))
+					     
+    (setf (text chord-queue-slider-label) (value self))
+    (pack chord-queue-title :side :top)
+    (pack chord-queue-slider :side :top)
+    (pack chord-queue-slider-label :side :top)
+    (pack action-btn)))
+
 (defun main ()
   (with-ltk ()
-    (let ((outer-planet (make-instance 'planet :diameter 25 :interval 25 :multiplier 200))
-	  (inner-planet (make-instance 'planet :multiplier 125 :degree-increment 5))
-	  (a-chord (make-instance 'chord))
-	  (c (make-instance 'canvas :width 800 :height 600))
-      (continuep t))
+    (let* ((state-fn (state-toggle))
+	   (outer-planet (make-instance 'planet :diameter 25 :interval 25 :multiplier 200))
+	   (inner-planet (make-instance 'planet :multiplier 125 :degree-increment 3))
+	   (a-chord (make-instance 'chord))
+	   (mf (make-instance 'frame))
+	   (f (make-instance 'frame :master mf))
+	   (c (make-instance 'canvas :width 800 :height 600 :master mf))
+	   (continuep t)
+	   (panel (make-instance 'control-panel :master f)))
+
+      (print state-fn)
+      (pack mf)
+      (pack f :side :right)
+      (setf (cmd-slider panel) (lambda (e) (format t "~a~%" (value panel))))
+      (setf (cmd-action-btn panel) (lambda () (state-fn)))
       (focus c)
       (bind c "<KeyPress-q>" (lambda (event) (exit-wish)))
-      (pack c)
+      (pack c :side :left)
+      (pack panel :side :top)
       (draw-planet outer-planet c)
       (configure (image-item outer-planet) :fill :blue)
       (draw-planet inner-planet c)
       (configure (image-item inner-planet) :fill :red)
 
       (let ((my-ticker (ticker-generator))
-	    (chord-queue (make-queue)))
+	    (chord-queue (make-queue))
+	    (max-q-length (value panel)))
 	(loop while continuep do
 	     (do ((i 0 (1+ i)))
 		 ((< i 0))
-	       (when (funcall my-ticker)
-		 (orbit outer-planet c)
-		 (orbit inner-planet c)
-		 (when (and (> (degree inner-planet) 0) (= 0 (mod (degree inner-planet) 10)))
-		   (draw-chord a-chord outer-planet inner-planet c)
-		   (process-events)
-		   (enqueue (image-item a-chord) chord-queue)
-		   (when (> (length (queue-contents chord-queue)) 20)
-		     (itemdelete c (dequeue chord-queue))))
-		 (process-events))))))))
+	       (when (equalp (state panel) :on)
+		 (when (funcall my-ticker)
+		   (orbit outer-planet c)
+		   (orbit inner-planet c)
+		   (when (and (> (degree inner-planet) 0) (= 0 (mod (degree inner-planet) 10)))
+		     (draw-chord a-chord outer-planet inner-planet c)
+		     (process-events)
+		     (enqueue (image-item a-chord) chord-queue)
+		     (when (> (length (queue-contents chord-queue)) (value panel))
+		       (dotimes (i 2)
+			 (itemdelete c (dequeue chord-queue)))))
+		   (process-events)))))))))
 
 
 (defun queue-contents (q) (cdr q))
@@ -141,4 +195,6 @@
 (defun front (q) (first (queue-contents q)))
 
 (defun empty-queue-p (q) (null (queue-contents q)))
+
+
 
