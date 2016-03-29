@@ -1,5 +1,4 @@
 (ql:quickload :lispbuilder-sdl)
-
 (defpackage :sdl-fun
   (:use :common-lisp :sdl)
   (:export :main))
@@ -24,6 +23,14 @@
       :on
       :off))
 
+(defun on-key-event (key)
+  (cond
+    ((sdl:key= key :sdl-key-up) (setf y (decrement-helper y)))
+    ((sdl:key= key :sdl-key-down) (setf y (increment-helper y *window-height*)))
+    ((sdl:key= key :sdl-key-left) (setf x (decrement-helper x))) 
+    ((sdl:key= key :sdl-key-right) (setf x (increment-helper x *window-width*)))
+    ((sdl:key= key :sdl-key-space) (setf zoom-box (zoom-toggle zoom-box)))))
+
 (defun main ()
   (sdl:with-init ()
     (let ((x 160)
@@ -35,17 +42,14 @@
       (sdl:with-events ()
 	(:quit-event () t)
 	(:key-down-event (:key key)
-			 (cond
-			   ((sdl:key= key :sdl-key-up) (setf y (decrement-helper y)))
-			   ((sdl:key= key :sdl-key-down) (setf y (increment-helper y *window-height*)))
-			   ((sdl:key= key :sdl-key-left) (setf x (decrement-helper x)))
-			   ((sdl:key= key :sdl-key-right) (setf x (increment-helper x *window-width*)))
-			   ((sdl:key= key :sdl-key-space) (setf zoom-box (zoom-toggle zoom-box)))))
+			 (on-key-event key))
 	(:idle ()
 	       (sdl:clear-display sdl:*black*)
 	       (sdl:draw-vline x 0 360 :color *random-color*)
 	       (sdl:draw-hline 0 360 y :color *random-color*)
 	       (when (eq :on zoom-box)
-		 (sdl:draw-box (sdl:rectangle-from-midpoint-* x y 20 20) :stroke-color *random-color* :clipping t))
+		 (sdl:draw-box (sdl:rectangle-from-midpoint-* x y 100 100)
+			       :stroke-color *random-color*
+			       :color (sdl:color :r 25 :g 50 :b 75 :a 100)))
 	       (sdl:update-display))))))
 		
